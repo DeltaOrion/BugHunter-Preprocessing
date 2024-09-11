@@ -1,7 +1,6 @@
 package me.jacob;
 
 import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
@@ -10,17 +9,19 @@ import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
 import java.util.Stack;
 
-public class NameDestructor {
+public class NameMatcher {
 
     private final CompilationUnit cu;
     private final String longName;
+    private String signature;
+    private CallableDeclaration<?> result;
 
-    public NameDestructor(CompilationUnit cu, String longName) {
+    public NameMatcher(CompilationUnit cu, String longName) {
         this.cu = cu;
         this.longName = longName;
     }
 
-    public Node getMatchingNode() throws Exception {
+    public void calculateMatchingNode() throws Exception {
         var packageDeclaration = cu.getPackageDeclaration();
         var packageName = "";
         if (packageDeclaration.isPresent()) {
@@ -32,32 +33,38 @@ public class NameDestructor {
         }
 
         var startName = longName.substring(packageName.length());
-        var visitor = new NameConstructorVisitor(longName);
+        var visitor = new NameConstructorVisitor();
         cu.accept(visitor, startName);
-        if (visitor.getResult() == null) {
-            System.out.println("Unable to find method for '" + longName + "'");
-        } else if (visitor.getResult() instanceof MethodDeclaration dec) {
-            System.out.println(longName + "            " + dec.getSignature().asString());
-        } else if (visitor.getResult() instanceof ConstructorDeclaration dec) {
-            System.out.println(longName + "            " + dec.getSignature().asString());
-        }
 
-        return visitor.getResult();
+        signature = visitor.getSignature();
+        result = visitor.getResult();
+    }
+
+    public CallableDeclaration<?> getResult() {
+        return result;
+    }
+
+    public String getSignature() {
+        return signature;
+    }
+
+    public String getLongName() {
+        return longName;
+    }
+
+    public CompilationUnit getCu() {
+        return cu;
     }
 
     private static class NameConstructorVisitor extends VoidVisitorAdapter<String> {
 
-        private Node result;
+        private CallableDeclaration<?> result;
         private Stack<Integer> anonymousClassStack = new Stack<>();
-        private final String originalName;
-
-        private NameConstructorVisitor(String originalName) {
-            this.originalName = originalName;
-        }
+        private String signature;
 
         @Override
         public void visit(final ObjectCreationExpr objectCreationExpr, String name) {
-            objectCreationExpr.getAnonymousClassBody().ifPresent(body -> {
+            objectCreationExpr.getAnonymousClassBody().ifPresentOrElse(body -> {
                 // Check if the name matches this level of nesting
                 var anonymousClassNumber = anonymousClassStack.peek();
                 String expectedPrefix = "$" + anonymousClassNumber;
@@ -68,9 +75,9 @@ public class NameDestructor {
                 }
 
                 anonymousClassStack.push(anonymousClassStack.pop() + 1);
+            }, () -> {
+                super.visit(objectCreationExpr, name);
             });
-
-            super.visit(objectCreationExpr, name);
         }
 
         @Override
@@ -81,9 +88,6 @@ public class NameDestructor {
                 super.visit(classDeclaration, name.substring(length));
             } else if (name.startsWith("." + classDeclaration.getNameAsString())) {
                 super.visit(classDeclaration, name.substring(length));
-            } else {
-                //we are looking for an anonymous class now
-                super.visit(classDeclaration, name);
             }
             anonymousClassStack.pop();
         }
@@ -96,9 +100,6 @@ public class NameDestructor {
                 super.visit(enumDeclaration, name.substring(length));
             } else if (name.startsWith("." + enumDeclaration.getNameAsString())) {
                 super.visit(enumDeclaration, name.substring(length));
-            } else {
-                //we are looking for an anonymous class now
-                super.visit(enumDeclaration, name);
             }
             anonymousClassStack.pop();
         }
@@ -120,7 +121,7 @@ public class NameDestructor {
                 root = root.findAncestor(MethodDeclaration.class).get();
             }
             result = root;
-            super.visit(methodDeclaration, name);
+            signature = root.getSignature().asString();
         }
 
 
@@ -137,7 +138,7 @@ public class NameDestructor {
             }
 
             result = constructorDeclaration;
-            super.visit(constructorDeclaration, name);
+            signature = constructorDeclaration.getSignature().asString();
         }
 
         private boolean parameterMatches(NodeList<Parameter> parameters, String fullSig) {
@@ -197,8 +198,12 @@ public class NameDestructor {
             return false;
         }
 
-        public Node getResult() {
+        public CallableDeclaration<?> getResult() {
             return result;
+        }
+
+        public String getSignature() {
+            return signature;
         }
     }
 }

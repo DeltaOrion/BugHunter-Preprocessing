@@ -2,9 +2,9 @@ package me.jacob.entities;
 
 import com.opencsv.bean.CsvBindByName;
 
-public class FileBugRecordOutput {
+public class BugRecordOutput {
     @CsvBindByName(column = "id")
-    private String Id;
+    private int id;
     @CsvBindByName(column = "project")
     private String project;
     @CsvBindByName(column = "class-source-file")
@@ -13,12 +13,20 @@ public class FileBugRecordOutput {
     private String methodSourceFile;
     @CsvBindByName(column = "hash")
     private String hash;
-    @CsvBindByName(column = "long-name")
-    private String longName;
+    @CsvBindByName(column = "signature")
+    private String signature;
     @CsvBindByName(column = "parent")
     private String parent;
     @CsvBindByName(column = "number-of-bugs")
     private int numberOfBugs;
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
 
     public String getProject() {
         return project;
@@ -52,14 +60,6 @@ public class FileBugRecordOutput {
         this.hash = hash;
     }
 
-    public String getLongName() {
-        return longName;
-    }
-
-    public void setLongName(String longName) {
-        this.longName = longName;
-    }
-
     public String getParent() {
         return parent;
     }
@@ -74,5 +74,13 @@ public class FileBugRecordOutput {
 
     public void setNumberOfBugs(int numberOfBugs) {
         this.numberOfBugs = numberOfBugs;
+    }
+
+    public String getSignature() {
+        return signature;
+    }
+
+    public void setSignature(String signature) {
+        this.signature = signature;
     }
 }

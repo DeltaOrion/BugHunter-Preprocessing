@@ -1,17 +1,22 @@
 package me.jacob;
 
 import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
-import me.jacob.entities.BugRecordInput;
-import me.jacob.entities.FileBugRecordOutput;
+import me.jacob.entities.*;
 
-import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
 
 public class BugRecordTransformer implements Runnable {
 
@@ -20,43 +25,152 @@ public class BugRecordTransformer implements Runnable {
 
     private final Configuration configuration;
 
-    private FileBugRecordOutput output;
+    private final List<BugRecordOutput> nodes;
+
+    private final List<EdgeOutput> edges;
+
+    private String classSourceName;
+
+    private BugRecordInput firstInput;
 
     public BugRecordTransformer(Collection<BugRecordInput> inputs, Configuration configuration) {
         this.inputs = inputs;
         this.configuration = configuration;
+        this.edges = new ArrayList<>();
+        this.nodes = new ArrayList<>();
+        this.firstInput = inputs.stream().findFirst().get();
     }
 
 
     @Override
     public void run() {
-        File file = new File(configuration.getWorkingDirectory(), inputs.stream().findFirst().get().getSourceFile());
         try {
-            ReflectionTypeSolver reflectionTypeSolver = new ReflectionTypeSolver();
-
-            CombinedTypeSolver combinedTypeSolver = new CombinedTypeSolver();
-            combinedTypeSolver.add(reflectionTypeSolver);
-
-            JavaSymbolSolver symbolSolver = new JavaSymbolSolver(combinedTypeSolver);
-            ParserConfiguration parserConfig = new ParserConfiguration().setSymbolResolver(symbolSolver);
-
-            JavaParser parser = new JavaParser(parserConfig);
-            var result = parser.parse(file);
-            result.ifSuccessful(this::transform);
-        } catch (FileNotFoundException e) {
+            var sourceFile = createSourceFile();
+            var parseResult = parse(sourceFile);
+            parseResult.ifSuccessful(this::transform);
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
+    private ParseResult<CompilationUnit> parse(File sourceFile) throws FileNotFoundException {
+        ReflectionTypeSolver reflectionTypeSolver = new ReflectionTypeSolver();
+
+        CombinedTypeSolver combinedTypeSolver = new CombinedTypeSolver();
+        combinedTypeSolver.add(reflectionTypeSolver);
+
+        JavaSymbolSolver symbolSolver = new JavaSymbolSolver(combinedTypeSolver);
+        ParserConfiguration parserConfig = new ParserConfiguration().setSymbolResolver(symbolSolver);
+
+        JavaParser parser = new JavaParser(parserConfig);
+        return parser.parse(sourceFile);
+    }
+
+    private File createSourceFile() throws IOException {
+
+        var originalSourceFile = new File(configuration.getInputDirectory(), firstInput.getSourceFile());
+        var id = UUID.randomUUID();
+        var newSourceFile = Path.of(configuration.getOutputDirectory(), firstInput.getProject(), "classes", id + ".java").toFile();
+        this.classSourceName = Path.of(firstInput.getProject(), "classes", id + ".java").toString();
+        copySourceFile(originalSourceFile, newSourceFile);
+        return newSourceFile;
+    }
+
+    private void copySourceFile(File originalSourceFile, File newSourceFile) throws IOException {
+        if (!newSourceFile.exists()) {
+            newSourceFile.toPath().getParent().toFile().mkdirs();
+        }
+
+        Files.copy(originalSourceFile.toPath(), newSourceFile.toPath());
+    }
+
     private void transform(CompilationUnit cu) {
-        for (var input : inputs) {
-            var nameConstructor = new NameDestructor(cu, input.getLongName());
-            try {
-                var matchingNode = nameConstructor.getMatchingNode();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+        try {
+            List<SdpMethod> calcNodes = new ArrayList<>();
+            for (var input : inputs) {
+                var nameMatcher = new NameMatcher(cu, input.getLongName());
+                nameMatcher.calculateMatchingNode();
+                calcNodes.add(createSdpMethod(input, nameMatcher));
+            }
+
+            var methodContextFetcher = new MethodContextFetcher(calcNodes, cu);
+            methodContextFetcher.calculate();
+
+            for (var node : methodContextFetcher.getNodes().values()) {
+                if (node.getSource().getNameAsString().contains("test")) {
+                    node.setValid(false);
+                }
+            }
+
+            var contextNodes = methodContextFetcher.getNodes();
+            var contextEdges = methodContextFetcher.getEdges();
+
+            for (var node : contextNodes.values()) {
+                this.nodes.add(convertToOutput(node));
+            }
+
+            for (var edge : contextEdges) {
+                this.edges.add(convertToOutput(edge));
+            }
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+
+    }
+
+    private EdgeOutput convertToOutput(SdpEdge edge) {
+        return new EdgeOutput(edge.getSource().getId(), edge.getDestination().getId());
+    }
+
+    private BugRecordOutput convertToOutput(SdpMethod node) throws IOException {
+        var output = new BugRecordOutput();
+        var methodPath = Path.of(node.getProject(), "methods", node.getId() + ".java");
+        writeNodeToFile(node.getSource(), Path.of(configuration.getOutputDirectory(), methodPath.toString()).toString());
+        output.setId(node.getId());
+        output.setHash(node.getHash());
+        output.setParent(node.getParent());
+        output.setProject(node.getProject());
+        output.setMethodSourceFile(methodPath.toString());
+        output.setClassSourceFile(node.getClassSourceFile());
+        output.setId(node.getId());
+        output.setNumberOfBugs(node.getNumberOfBugs());
+        output.setSignature(node.getSignature());
+
+        return output;
+    }
+
+    private SdpMethod createSdpMethod(BugRecordInput input, NameMatcher nameMatcher) {
+        var output = new SdpMethod();
+        output.setId(IdGenerator.getId());
+        output.setProject(input.getProject());
+        output.setHash(input.getHash());
+        output.setParent(input.getParent());
+        output.setNumberOfBugs(input.getNumberOfBugs());
+        output.setSource(nameMatcher.getResult());
+        output.setClassSourceFile(classSourceName);
+        output.setSignature(input.getParent() + "." + nameMatcher.getSignature());
+        return output;
+    }
+
+    private void writeNodeToFile(Node node, String fileName) throws IOException {
+        var file = new File(fileName);
+        if (!file.exists()) {
+            file.toPath().getParent().toFile().mkdirs();
+            file.createNewFile();
+        }
+
+        try (var fileWriter = new FileWriter(file)) {
+            try (BufferedWriter writer = new BufferedWriter(fileWriter)) {
+                writer.write(node.toString());
             }
         }
     }
 
+    public Collection<BugRecordOutput> getNodes() {
+        return nodes;
+    }
+
+    public Collection<EdgeOutput> getEdges() {
+        return edges;
+    }
 }

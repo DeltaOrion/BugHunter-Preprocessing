@@ -1,18 +1,17 @@
 package me.jacob;
 
-import java.io.File;
 import java.nio.file.Path;
 
 public class Configuration {
 
     private String fileName;
 
-    private String workingDirectory;
+    private String inputDirectory;
 
-    private String outputFile;
+    private String outputDirectory;
 
     public String getFileName() {
-        return Path.of(workingDirectory,fileName).toFile().getPath();
+        return Path.of(inputDirectory,fileName).toFile().getPath();
     }
 
     public Configuration setFileName(String fileName) {
@@ -20,21 +19,21 @@ public class Configuration {
         return this;
     }
 
-    public String getWorkingDirectory() {
-        return workingDirectory;
+    public String getInputDirectory() {
+        return inputDirectory;
     }
 
-    public Configuration setWorkingDirectory(String workingDirectory) {
-        this.workingDirectory = workingDirectory;
+    public Configuration setInputDirectory(String inputDirectory) {
+        this.inputDirectory = inputDirectory;
         return this;
     }
 
-    public String getOutputFile() {
-        return Path.of(workingDirectory,outputFile).toFile().getPath();
+    public String getOutputDirectory() {
+        return outputDirectory;
     }
 
-    public Configuration setOutputFile(String outputFile) {
-        this.outputFile = outputFile;
+    public Configuration setOutputDirectory(String outputDirectory) {
+        this.outputDirectory = outputDirectory;
         return this;
     }
 }
