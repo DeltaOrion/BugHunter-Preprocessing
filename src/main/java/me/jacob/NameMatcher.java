@@ -5,8 +5,11 @@ import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.type.Type;
+import com.github.javaparser.ast.type.TypeParameter;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.github.javaparser.resolution.declarations.ResolvedTypeParameterDeclaration;
 
+import java.util.Optional;
 import java.util.Stack;
 
 public class NameMatcher {
@@ -14,7 +17,7 @@ public class NameMatcher {
     private final CompilationUnit cu;
     private final String longName;
     private String signature;
-    private CallableDeclaration<?> result;
+    private BodyDeclaration<?> result;
 
     public NameMatcher(CompilationUnit cu, String longName) {
         this.cu = cu;
@@ -40,7 +43,7 @@ public class NameMatcher {
         result = visitor.getResult();
     }
 
-    public CallableDeclaration<?> getResult() {
+    public BodyDeclaration<?> getResult() {
         return result;
     }
 
@@ -58,26 +61,41 @@ public class NameMatcher {
 
     private static class NameConstructorVisitor extends VoidVisitorAdapter<String> {
 
-        private CallableDeclaration<?> result;
+        private BodyDeclaration<?> result;
         private Stack<Integer> anonymousClassStack = new Stack<>();
         private String signature;
 
         @Override
+        public void visit(final EnumConstantDeclaration enumConstantDec, String name) {
+            if (enumConstantDec.getClassBody().size() > 0) {
+                handleAnonymousClassBody(name, enumConstantDec.getClassBody());
+            } else {
+                super.visit(enumConstantDec, name);
+            }
+        }
+
+        @Override
         public void visit(final ObjectCreationExpr objectCreationExpr, String name) {
             objectCreationExpr.getAnonymousClassBody().ifPresentOrElse(body -> {
-                // Check if the name matches this level of nesting
-                var anonymousClassNumber = anonymousClassStack.peek();
-                String expectedPrefix = "$" + anonymousClassNumber;
-                if (name.startsWith(expectedPrefix)) {
-                    anonymousClassStack.push(1);
-                    super.visit(objectCreationExpr, name.substring(expectedPrefix.length()));
-                    anonymousClassStack.pop();
-                }
-
-                anonymousClassStack.push(anonymousClassStack.pop() + 1);
+                handleAnonymousClassBody(name, body);
             }, () -> {
                 super.visit(objectCreationExpr, name);
             });
+        }
+
+        private void handleAnonymousClassBody(String name, NodeList<BodyDeclaration<?>> body) {
+            var anonymousClassNumber = anonymousClassStack.peek();
+            String expectedPrefix = "$" + anonymousClassNumber;
+
+            // Check if the name matches this level of nesting
+            if (name.startsWith(expectedPrefix)) {
+                anonymousClassStack.push(1);
+                super.visit(body, name.substring(expectedPrefix.length()));
+                anonymousClassStack.pop();
+            }
+
+            // Increment the stack to track the next anonymous class
+            anonymousClassStack.push(anonymousClassStack.pop() + 1);
         }
 
         @Override
@@ -116,12 +134,42 @@ public class NameMatcher {
                 return;
             }
 
-            var root = methodDeclaration;
-            while (root.findAncestor(MethodDeclaration.class).isPresent()) {
-                root = root.findAncestor(MethodDeclaration.class).get();
+            result = findRoot(methodDeclaration);
+            signature = calcSignature();
+        }
+
+        private String calcSignature() {
+            if (result instanceof CallableDeclaration<?> callable) {
+                return callable.getSignature().asString();
+            } else if (result instanceof EnumConstantDeclaration c) {
+                return c.getNameAsString();
             }
-            result = root;
-            signature = root.getSignature().asString();
+
+            return "unknown";
+        }
+
+        public BodyDeclaration<?> findRoot(BodyDeclaration<?> node) {
+            BodyDeclaration<?> current = node;
+
+            // Traverse upwards through method, constructor, and enum constant declarations
+            while (true) {
+                Optional<MethodDeclaration> methodAncestor = current.findAncestor(MethodDeclaration.class);
+                Optional<ConstructorDeclaration> constructorAncestor = current.findAncestor(ConstructorDeclaration.class);
+                Optional<EnumConstantDeclaration> enumConstantAncestor = current.findAncestor(EnumConstantDeclaration.class);
+
+                // Choose the first present ancestor (if any)
+                if (methodAncestor.isPresent()) {
+                    current = methodAncestor.get();
+                } else if (constructorAncestor.isPresent()) {
+                    current = constructorAncestor.get();
+                } else if (enumConstantAncestor.isPresent()) {
+                    current = enumConstantAncestor.get();
+                } else {
+                    break; // No more ancestors found, so we've reached the root
+                }
+            }
+
+            return current;
         }
 
 
@@ -137,8 +185,8 @@ public class NameMatcher {
                 return;
             }
 
-            result = constructorDeclaration;
-            signature = constructorDeclaration.getSignature().asString();
+            result = findRoot(constructorDeclaration);
+            signature = calcSignature();
         }
 
         private boolean parameterMatches(NodeList<Parameter> parameters, String fullSig) {
@@ -174,6 +222,11 @@ public class NameMatcher {
 
         private boolean namesEqual(String parsedName, Type paramName) {
             var paramNameStr = paramName.asString();
+            if (paramName.isArrayType() && paramNameStr.endsWith("[]")) {
+                while (paramNameStr.endsWith("[]")) {
+                    paramNameStr = paramNameStr.substring(0, paramNameStr.length() - 2);
+                }
+            }
             if (paramName.isClassOrInterfaceType() && paramName.asClassOrInterfaceType().getTypeArguments().isPresent()) {
                 paramNameStr = paramName.asClassOrInterfaceType().getName().asString();
             }
@@ -187,18 +240,44 @@ public class NameMatcher {
 
             //if is the paramName is generic, and the parsedName is an object, then it is a match, return true
             try {
-                var resolved = paramName.resolve().asTypeParameter();
-                if (resolved.declaredOnType() || resolved.declaredOnConstructor() || resolved.declaredOnMethod()) {
-                    return "Object".equals(parsedName);
+                var resolved = paramName.resolve();
+
+                // If the type is a type parameter, check its bound
+                if (resolved.isTypeVariable()) {
+                    var typeVariable = resolved.asTypeParameter();
+                    if (typeVariable.declaredOnType() || typeVariable.declaredOnConstructor() || typeVariable.declaredOnMethod()) {
+                        // Compare the upper bound of the type parameter, default to Object if none
+                        var upperBound = getErasureBound(typeVariable);
+                        return upperBound.equals(parsedName) || "Object".equals(parsedName);
+                    }
                 }
             } catch (Exception ignored) {
-
+                // Handle unresolved types
             }
+
 
             return false;
         }
 
-        public CallableDeclaration<?> getResult() {
+        private String getErasureBound(ResolvedTypeParameterDeclaration typeVariable) {
+            var astOpt = typeVariable.toAst();
+            if (!astOpt.isPresent()) {
+                return "Object";
+            }
+
+            var ast = astOpt.get();
+            if (!(ast instanceof TypeParameter typeParameter)) {
+                return "Object";
+            }
+
+            if (typeParameter.getTypeBound().isEmpty()) {
+                return "Object";
+            }
+
+            return typeParameter.getTypeBound().get(0).getNameAsString();
+        }
+
+        public BodyDeclaration<?> getResult() {
             return result;
         }
 

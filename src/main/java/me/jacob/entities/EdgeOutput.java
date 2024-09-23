@@ -6,15 +6,19 @@ import java.util.Objects;
 
 public class EdgeOutput {
 
-    @CsvBindByName(column = "source" )
+    @CsvBindByName(column = "source")
     private int source;
 
     @CsvBindByName(column = "destination")
     private int destination;
 
-    public EdgeOutput(int source, int destination) {
+    @CsvBindByName(column = "graphId")
+    private int graphId;
+
+    public EdgeOutput(int source, int destination, int graphId) {
         this.source = source;
         this.destination = destination;
+        this.graphId = graphId;
     }
 
     public int getSource() {
@@ -31,6 +35,14 @@ public class EdgeOutput {
 
     public void setDestination(int destination) {
         this.destination = destination;
+    }
+
+    public int getGraphId() {
+        return graphId;
+    }
+
+    public void setGraphId(int graphId) {
+        this.graphId = graphId;
     }
 
     @Override

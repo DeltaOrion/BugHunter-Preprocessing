@@ -1,10 +1,7 @@
 package me.jacob;
 
 import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.CallableDeclaration;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.ConstructorDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.ExplicitConstructorInvocationStmt;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
@@ -18,10 +15,10 @@ public class MethodContextFetcher {
 
     private final List<SdpEdge> edges;
     private List<SdpMethod> inputMethods;
-    private final Map<CallableDeclaration<?>, SdpMethod> nodes;
-    private final Set<CallableDeclaration<?>> processed;
+    private final Map<BodyDeclaration<?>, SdpMethod> nodes;
+    private final Set<BodyDeclaration<?>> processed;
     private final SdpMethod firstMethod;
-    private Map<String, List<CallableDeclaration<?>>> classDeclarations;
+    private Map<String, List<BodyDeclaration<?>>> classDeclarations;
     private final CompilationUnit cu;
 
     public MethodContextFetcher(List<SdpMethod> inputMethods, CompilationUnit cu) {
@@ -89,21 +86,31 @@ public class MethodContextFetcher {
         }
     }
 
-    private SdpMethod createBuggedMethod(CallableDeclaration<?> connection) {
+    private SdpMethod createBuggedMethod(BodyDeclaration<?> connection) {
         var connectionNode = new SdpMethod();
-        connectionNode.setId(IdGenerator.getId());
+        connectionNode.setId(IdGenerator.getNodeId());
         connectionNode.setProject(firstMethod.getProject());
         connectionNode.setSource(connection);
         connectionNode.setHash(firstMethod.getHash());
         connectionNode.setClassSourceFile(firstMethod.getClassSourceFile());
-        connectionNode.setNumberOfBugs(0);
-        connectionNode.setSignature(connection.getSignature().asString());
+        connectionNode.setNumberOfBugs(-1);
+        connectionNode.setSignature(calcSignature(connection));
         connectionNode.setParent(firstMethod.getParent());
 
         return connectionNode;
     }
 
-    public Map<CallableDeclaration<?>, SdpMethod> getNodes() {
+    private String calcSignature(BodyDeclaration<?> result) {
+        if (result instanceof CallableDeclaration<?> callable) {
+            return callable.getSignature().asString();
+        } else if (result instanceof EnumConstantDeclaration c) {
+            return c.getNameAsString();
+        }
+
+        return "unknown";
+    }
+
+    public Map<BodyDeclaration<?>, SdpMethod> getNodes() {
         return nodes;
     }
 
@@ -113,11 +120,11 @@ public class MethodContextFetcher {
 
     private static class MethodDeclarationVisitor extends VoidVisitorAdapter<Void> {
 
-        private final Set<CallableDeclaration<?>> connected = new HashSet<>();
+        private final Set<BodyDeclaration<?>> connected = new HashSet<>();
         private boolean isExplicitSuper = false;
-        private final Map<String, List<CallableDeclaration<?>>> classDecs;
+        private final Map<String, List<BodyDeclaration<?>>> classDecs;
 
-        private MethodDeclarationVisitor(Map<String, List<CallableDeclaration<?>>> classDecs) {
+        private MethodDeclarationVisitor(Map<String, List<BodyDeclaration<?>>> classDecs) {
             this.classDecs = classDecs;
         }
 

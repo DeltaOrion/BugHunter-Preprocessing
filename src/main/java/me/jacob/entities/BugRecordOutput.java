@@ -19,6 +19,8 @@ public class BugRecordOutput {
     private String parent;
     @CsvBindByName(column = "number-of-bugs")
     private int numberOfBugs;
+    @CsvBindByName(column = "graphId")
+    private int graphId;
 
     public int getId() {
         return id;
@@ -82,5 +84,13 @@ public class BugRecordOutput {
 
     public void setSignature(String signature) {
         this.signature = signature;
+    }
+
+    public int getGraphId() {
+        return graphId;
+    }
+
+    public void setGraphId(int graphId) {
+        this.graphId = graphId;
     }
 }

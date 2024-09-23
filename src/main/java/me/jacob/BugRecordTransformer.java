@@ -13,10 +13,7 @@ import me.jacob.entities.*;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public class BugRecordTransformer implements Runnable {
 
@@ -90,39 +87,70 @@ public class BugRecordTransformer implements Runnable {
             for (var input : inputs) {
                 var nameMatcher = new NameMatcher(cu, input.getLongName());
                 nameMatcher.calculateMatchingNode();
+                var result = nameMatcher.getResult();
+                if (result == null) {
+                    System.out.println("Unable to match " + input.getLongName());
+                    continue;
+                }
                 calcNodes.add(createSdpMethod(input, nameMatcher));
             }
 
-            var methodContextFetcher = new MethodContextFetcher(calcNodes, cu);
-            methodContextFetcher.calculate();
+            if (!calcNodes.isEmpty()) {
+                var methodContextFetcher = new MethodContextFetcher(calcNodes, cu);
+                methodContextFetcher.calculate();
 
-            for (var node : methodContextFetcher.getNodes().values()) {
-                if (node.getSource().getNameAsString().contains("test")) {
-                    node.setValid(false);
+                List<SdpMethod> finalNodes = new ArrayList<>();
+                List<SdpEdge> finalEdges = new ArrayList<>();
+                Set<Integer> invalid = new HashSet<>();
+                for (var node : methodContextFetcher.getNodes().values()) {
+                    if (node.getSignature().contains("test")) {
+                        node.setValid(false);
+                        invalid.add(node.getId());
+                    } else {
+                        finalNodes.add(node);
+                    }
                 }
-            }
 
-            var contextNodes = methodContextFetcher.getNodes();
-            var contextEdges = methodContextFetcher.getEdges();
+                for (var edge : methodContextFetcher.getEdges()) {
+                    if (invalid.contains(edge.getSource().getId()) || invalid.contains(edge.getDestination().getId())) {
+                        continue;
+                    }
 
-            for (var node : contextNodes.values()) {
-                this.nodes.add(convertToOutput(node));
-            }
+                    finalEdges.add(edge);
+                }
 
-            for (var edge : contextEdges) {
-                this.edges.add(convertToOutput(edge));
+                for (Set<SdpEdge> graphEdges : GraphGrouper.groupEdgesIntoGraphs(finalEdges)) {
+                    var graphId = IdGenerator.getGraphId();
+                    Set<SdpMethod> graphNodes = new HashSet<>();
+                    for (SdpEdge edge : graphEdges) {
+                        graphNodes.add(finalNodes.stream().filter(x -> x.getId() == edge.getSource().getId()).findFirst().get());
+                        graphNodes.add(finalNodes.stream().filter(x -> x.getId() == edge.getDestination().getId()).findFirst().get());
+                    }
+
+                    for (var node : graphNodes) {
+                        this.nodes.add(convertToOutput(node, graphId));
+                        System.out.println("Processed " + node.getId() + ", " + node.getSignature());
+                    }
+
+                    for (var edge : graphEdges) {
+                        this.edges.add(convertToOutput(edge, graphId));
+                    }
+
+                }
+
+
             }
         } catch (Exception ex) {
-            throw new RuntimeException(ex);
+            ex.printStackTrace();
         }
 
     }
 
-    private EdgeOutput convertToOutput(SdpEdge edge) {
-        return new EdgeOutput(edge.getSource().getId(), edge.getDestination().getId());
+    private EdgeOutput convertToOutput(SdpEdge edge, int graphId) {
+        return new EdgeOutput(edge.getSource().getId(), edge.getDestination().getId(), graphId);
     }
 
-    private BugRecordOutput convertToOutput(SdpMethod node) throws IOException {
+    private BugRecordOutput convertToOutput(SdpMethod node, int graphId) throws IOException {
         var output = new BugRecordOutput();
         var methodPath = Path.of(node.getProject(), "methods", node.getId() + ".java");
         writeNodeToFile(node.getSource(), Path.of(configuration.getOutputDirectory(), methodPath.toString()).toString());
@@ -135,13 +163,14 @@ public class BugRecordTransformer implements Runnable {
         output.setId(node.getId());
         output.setNumberOfBugs(node.getNumberOfBugs());
         output.setSignature(node.getSignature());
+        output.setGraphId(graphId);
 
         return output;
     }
 
     private SdpMethod createSdpMethod(BugRecordInput input, NameMatcher nameMatcher) {
         var output = new SdpMethod();
-        output.setId(IdGenerator.getId());
+        output.setId(IdGenerator.getNodeId());
         output.setProject(input.getProject());
         output.setHash(input.getHash());
         output.setParent(input.getParent());

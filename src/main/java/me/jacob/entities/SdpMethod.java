@@ -1,5 +1,6 @@
 package me.jacob.entities;
 
+import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.CallableDeclaration;
 
 import java.util.Objects;
@@ -7,7 +8,7 @@ import java.util.Objects;
 public class SdpMethod {
 
     private int id;
-    private CallableDeclaration<?> source;
+    private BodyDeclaration<?> source;
     private boolean isValid = true;
     private String project;
     private String classSourceFile;
@@ -23,15 +24,16 @@ public class SdpMethod {
         return id;
     }
 
-    public void setId(int id) {
+    public SdpMethod setId(int id) {
         this.id = id;
+        return this;
     }
 
-    public CallableDeclaration<?> getSource() {
+    public BodyDeclaration<?> getSource() {
         return source;
     }
 
-    public void setSource(CallableDeclaration<?> source) {
+    public void setSource(BodyDeclaration<?> source) {
         this.source = source;
     }
 

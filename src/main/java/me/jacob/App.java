@@ -16,10 +16,10 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class App {
     public static void main(String[] args) {
@@ -30,15 +30,41 @@ public class App {
     public void run(String[] args) {
         var configuration = getConfiguration(args);
         var records = getRecords(configuration);
-        List<BugRecordOutput> nodes = new ArrayList<>();
-        List<EdgeOutput> edges = new ArrayList<>();
+        List<BugRecordOutput> nodes = Collections.synchronizedList(new ArrayList<>());
+        List<EdgeOutput> edges = Collections.synchronizedList(new ArrayList<>());
 
         Map<String, List<BugRecordInput>> fileMap = groupSameFile(records);
-        for (var recordCollection : fileMap.values()) {
-            var transformer = new BugRecordTransformer(recordCollection, configuration);
-            transformer.run();
-            nodes.addAll(transformer.getNodes());
-            edges.addAll(transformer.getEdges());
+        var executor = Executors.newFixedThreadPool(10); // Control how many concurrent tasks you want
+        var futures = new ArrayList<CompletableFuture<Void>>();
+
+        try {
+            for (var recordCollection : fileMap.values()) {
+                futures.add(
+                        CompletableFuture.runAsync(() -> {
+                            try {
+                                var transformer = new BugRecordTransformer(recordCollection, configuration);
+                                transformer.run();
+                                nodes.addAll(transformer.getNodes());
+                                edges.addAll(transformer.getEdges());
+                            } catch (Exception | Error ex) {
+                                ex.printStackTrace();
+                            }
+                        }, executor)
+                );
+            }
+
+            // Wait for all futures to complete
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } finally {
+            // Ensure proper shutdown of the executor
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow(); // Force shutdown if tasks don't terminate in time
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+            }
         }
 
         writeCsv(configuration, nodes, "nodes.csv");
@@ -76,7 +102,7 @@ public class App {
 
         parser.addArgument("-i", "--input")
                 .required(true)
-                .help("The csv file containing all bug records");
+                .help("The input to the program");
 
         parser.addArgument("-wd", "--working-directory")
                 .setDefault(".")
