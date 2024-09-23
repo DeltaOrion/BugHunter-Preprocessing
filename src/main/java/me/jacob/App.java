@@ -29,6 +29,14 @@ public class App {
 
     public void run(String[] args) {
         var configuration = getConfiguration(args);
+        if(configuration.getFileName().endsWith(".java")) {
+            preparePredictionData(configuration);
+        } else {
+            prepareTrainingData(configuration);
+        }
+    }
+
+    private void prepareTrainingData(Configuration configuration) {
         var records = getRecords(configuration);
         List<BugRecordOutput> nodes = Collections.synchronizedList(new ArrayList<>());
         List<EdgeOutput> edges = Collections.synchronizedList(new ArrayList<>());
@@ -71,6 +79,13 @@ public class App {
         writeCsv(configuration, edges, "edges.csv");
     }
 
+    private void preparePredictionData(Configuration configuration) {
+        ClassFileTransformer transformer = new ClassFileTransformer(configuration);
+        transformer.run();
+        writeCsv(configuration, transformer.getNodes(), "nodes.csv");
+        writeCsv(configuration, transformer.getEdges(), "edges.csv");
+    }
+
     private <T> void writeCsv(Configuration configuration, List<T> outputs, String name) {
         try (var writer = new FileWriter(new File(configuration.getOutputDirectory(), name))) {
             var csvWriter = new StatefulBeanToCsvBuilder<T>(writer)
@@ -102,14 +117,15 @@ public class App {
 
         parser.addArgument("-i", "--input")
                 .required(true)
-                .help("The input to the program");
+                .help("The input to the program. If this is a java file it will prepare data for prediction, and if it is csv it will prepare for training.");
 
         parser.addArgument("-wd", "--working-directory")
                 .setDefault(".")
-                .help("the working directory of the dataset");
+                .help("The directory containing all of the input files. ");
 
         parser.addArgument("-o", "--output")
-                .setDefault("output");
+                .setDefault("output")
+                .help("The output directory for all the result files");
 
         Namespace ns = null;
         try {

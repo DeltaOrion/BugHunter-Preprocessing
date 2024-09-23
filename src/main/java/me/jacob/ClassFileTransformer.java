@@ -5,45 +5,42 @@ import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.BodyDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
-import me.jacob.entities.*;
+import me.jacob.entities.ClassRecordOutput;
+import me.jacob.entities.EdgeOutput;
+import me.jacob.entities.SdpEdge;
+import me.jacob.entities.SdpMethod;
 
 import java.io.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
-public class BugRecordTransformer implements Runnable {
-
-    //all record inputs should have the same project, file and hash
-    private final Collection<BugRecordInput> inputs;
+public class ClassFileTransformer implements Runnable {
 
     private final Configuration configuration;
 
-    private final List<BugRecordOutput> nodes;
+    private final List<ClassRecordOutput> nodes;
 
     private final List<EdgeOutput> edges;
 
     private String classSourceName;
 
-    private BugRecordInput firstInput;
-
-    public BugRecordTransformer(Collection<BugRecordInput> inputs, Configuration configuration) {
-        this.inputs = inputs;
+    public ClassFileTransformer(Configuration configuration) {
         this.configuration = configuration;
         this.edges = new ArrayList<>();
         this.nodes = new ArrayList<>();
-        this.firstInput = inputs.stream().findFirst().get();
     }
 
 
     @Override
     public void run() {
         try {
-            var sourceFile = createSourceFile();
-            var parseResult = parse(sourceFile);
+            var parseResult = parse(new File(configuration.getFileName()));
             parseResult.ifSuccessful(this::transform);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -63,40 +60,15 @@ public class BugRecordTransformer implements Runnable {
         return parser.parse(sourceFile);
     }
 
-    private File createSourceFile() throws IOException {
-        var originalSourceFile = new File(configuration.getInputDirectory(), firstInput.getSourceFile());
-        var id = UUID.randomUUID();
-        var newSourceFile = Path.of(configuration.getOutputDirectory(), firstInput.getProject(), "classes", id + ".java").toFile();
-        this.classSourceName = Path.of(firstInput.getProject(), "classes", id + ".java").toString();
-        copySourceFile(originalSourceFile, newSourceFile);
-        return newSourceFile;
-    }
-
-    private void copySourceFile(File originalSourceFile, File newSourceFile) throws IOException {
-        if (!newSourceFile.exists()) {
-            newSourceFile.toPath().getParent().toFile().mkdirs();
-        }
-
-        Files.copy(originalSourceFile.toPath(), newSourceFile.toPath());
-    }
-
     private void transform(CompilationUnit cu) {
         try {
             List<SdpMethod> calcNodes = new ArrayList<>();
-            for (var input : inputs) {
-                var nameMatcher = new NameMatcher(cu, input.getLongName());
-                nameMatcher.calculateMatchingNode();
-                var result = nameMatcher.getResult();
-                if (result == null) {
-                    System.out.println("Unable to match " + input.getLongName());
-                    continue;
-                }
-                calcNodes.add(createSdpMethod(input, nameMatcher));
+            for (var method : cu.findAll(MethodDeclaration.class)) {
+                calcNodes.add(createSdpMethod(method, method.getSignature().asString()));
             }
 
-            var transformer = new MethodListTransformer(calcNodes, cu);
+            MethodListTransformer transformer = new MethodListTransformer(calcNodes, cu);
             transformer.transform(cu);
-
             for (var node : transformer.getMethods()) {
                 this.nodes.add(convertToOutput(node));
                 System.out.println("Processed " + node.getId() + ", " + node.getSignature());
@@ -108,40 +80,28 @@ public class BugRecordTransformer implements Runnable {
         } catch (Exception ex) {
             ex.printStackTrace();
         }
+
     }
 
     private EdgeOutput convertToOutput(SdpEdge edge) {
         return new EdgeOutput(edge.getSource().getId(), edge.getDestination().getId(), edge.getGraphId());
     }
 
-    private BugRecordOutput convertToOutput(SdpMethod node) throws IOException {
-        var output = new BugRecordOutput();
-        var methodPath = Path.of(node.getProject(), "methods", node.getId() + ".java");
+    private ClassRecordOutput convertToOutput(SdpMethod node) throws IOException {
+        var output = new ClassRecordOutput();
+        var methodPath = Path.of("methods", node.getId() + ".java");
         writeNodeToFile(node.getSource(), Path.of(configuration.getOutputDirectory(), methodPath.toString()).toString());
         output.setId(node.getId());
-        output.setHash(node.getHash());
-        output.setParent(node.getParent());
-        output.setProject(node.getProject());
         output.setMethodSourceFile(methodPath.toString());
-        output.setClassSourceFile(node.getClassSourceFile());
-        output.setId(node.getId());
-        output.setNumberOfBugs(node.getNumberOfBugs());
         output.setSignature(node.getSignature());
-        output.setGraphId(node.getGraphId());
-
         return output;
     }
 
-    private SdpMethod createSdpMethod(BugRecordInput input, NameMatcher nameMatcher) {
+    private SdpMethod createSdpMethod(BodyDeclaration<?> declaration, String signature) {
         var output = new SdpMethod();
         output.setId(IdGenerator.getNodeId());
-        output.setProject(input.getProject());
-        output.setHash(input.getHash());
-        output.setParent(input.getParent());
-        output.setNumberOfBugs(input.getNumberOfBugs());
-        output.setSource(nameMatcher.getResult());
-        output.setClassSourceFile(classSourceName);
-        output.setSignature(input.getParent() + "." + nameMatcher.getSignature());
+        output.setSource(declaration);
+        output.setSignature(signature);
         return output;
     }
 
@@ -159,11 +119,11 @@ public class BugRecordTransformer implements Runnable {
         }
     }
 
-    public Collection<BugRecordOutput> getNodes() {
+    public List<ClassRecordOutput> getNodes() {
         return nodes;
     }
 
-    public Collection<EdgeOutput> getEdges() {
+    public List<EdgeOutput> getEdges() {
         return edges;
     }
 }

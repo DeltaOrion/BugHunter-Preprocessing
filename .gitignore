@@ -39,3 +39,5 @@ build/
 
 data/
 output/
+predict-data/
+predict-output/

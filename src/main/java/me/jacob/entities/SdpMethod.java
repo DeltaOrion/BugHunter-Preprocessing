@@ -16,6 +16,7 @@ public class SdpMethod {
     private String signature;
     private String parent;
     private int numberOfBugs;
+    private int graphId;
 
     public SdpMethod() {
     }
@@ -91,6 +92,14 @@ public class SdpMethod {
 
     public void setNumberOfBugs(int numberOfBugs) {
         this.numberOfBugs = numberOfBugs;
+    }
+
+    public int getGraphId() {
+        return graphId;
+    }
+
+    public void setGraphId(int graphId) {
+        this.graphId = graphId;
     }
 
     @Override

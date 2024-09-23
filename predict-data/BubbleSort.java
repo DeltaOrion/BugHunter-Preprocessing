@@ -1,0 +1,47 @@
+public class BubbleSort {
+
+    // Method to perform Bubble Sort
+    public static void bubbleSort(int[] array) {
+        int n = array.length;
+        boolean swapped;
+
+        // Outer loop for each pass through the array
+        for (int i = 0; i < n - 1; i++) {
+            swapped = false;
+
+            // Inner loop to compare adjacent elements
+            for (int j = 0; j < n - 1 - i; j++) {
+                // Swap if the current element is greater than the next element
+                if (array[j] > array[j + 1]) {
+                    int temp = array[j];
+                    array[j] = array[j + 1];
+                    array[j + 1] = temp;
+                    swapped = true;
+                }
+            }
+
+            // If no elements were swapped, the array is already sorted
+            if (!swapped) {
+                break;
+            }
+        }
+    }
+
+    // Main method to test the Bubble Sort
+    public static void main(String[] args) {
+        int[] numbers = {64, 34, 25, 12, 22, 11, 90};
+
+        System.out.println("Unsorted array:");
+        for (int num : numbers) {
+            System.out.print(num + " ");
+        }
+
+        // Sorting the array using bubble sort
+        bubbleSort(numbers);
+
+        System.out.println("\nSorted array:");
+        for (int num : numbers) {
+            System.out.print(num + " ");
+        }
+    }
+}

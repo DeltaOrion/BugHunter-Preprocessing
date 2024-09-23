@@ -6,6 +6,7 @@ public class SdpEdge {
 
     private final SdpMethod source;
     private final SdpMethod destination;
+    private int graphId;
 
     public SdpEdge(SdpMethod source, SdpMethod destination) {
         this.source = source;
@@ -18,6 +19,14 @@ public class SdpEdge {
 
     public SdpMethod getDestination() {
         return destination;
+    }
+
+    public int getGraphId() {
+        return graphId;
+    }
+
+    public void setGraphId(int graphId) {
+        this.graphId = graphId;
     }
 
     @Override
