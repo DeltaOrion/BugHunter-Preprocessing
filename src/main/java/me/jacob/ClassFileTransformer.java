@@ -7,6 +7,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
@@ -94,6 +95,7 @@ public class ClassFileTransformer implements Runnable {
         output.setId(node.getId());
         output.setMethodSourceFile(methodPath.toString());
         output.setSignature(node.getSignature());
+        output.setGraphId(node.getGraphId());
         return output;
     }
 

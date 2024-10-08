@@ -13,6 +13,10 @@ public class ClassRecordOutput {
     @CsvBindByName(column = "signature")
     private String signature;
 
+    @CsvBindByName(column = "graphId")
+    private int graphId;
+
+
     public int getId() {
         return id;
     }
@@ -35,5 +39,13 @@ public class ClassRecordOutput {
 
     public void setMethodSourceFile(String methodSourceFile) {
         this.methodSourceFile = methodSourceFile;
+    }
+
+    public int getGraphId() {
+        return graphId;
+    }
+
+    public void setGraphId(int graphId) {
+        this.graphId = graphId;
     }
 }
