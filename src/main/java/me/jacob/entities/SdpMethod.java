@@ -15,6 +15,7 @@ public class SdpMethod {
     private String hash;
     private String signature;
     private String parent;
+    private String oldLongName;
     private int numberOfBugs;
     private int graphId;
 
@@ -100,6 +101,14 @@ public class SdpMethod {
 
     public void setGraphId(int graphId) {
         this.graphId = graphId;
+    }
+
+    public String getOldLongName() {
+        return oldLongName;
+    }
+
+    public void setOldLongName(String oldLongName) {
+        this.oldLongName = oldLongName;
     }
 
     @Override

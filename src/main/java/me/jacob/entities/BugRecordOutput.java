@@ -21,6 +21,8 @@ public class BugRecordOutput {
     private int numberOfBugs;
     @CsvBindByName(column = "graphId")
     private int graphId;
+    @CsvBindByName(column = "old-long-name")
+    private String oldLongName;
 
     public int getId() {
         return id;
@@ -92,5 +94,13 @@ public class BugRecordOutput {
 
     public void setGraphId(int graphId) {
         this.graphId = graphId;
+    }
+
+    public String getOldLongName() {
+        return oldLongName;
+    }
+
+    public void setOldLongName(String oldLongName) {
+        this.oldLongName = oldLongName;
     }
 }

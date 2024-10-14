@@ -90,7 +90,7 @@ public class ClassFileTransformer implements Runnable {
 
     private ClassRecordOutput convertToOutput(SdpMethod node) throws IOException {
         var output = new ClassRecordOutput();
-        var methodPath = Path.of("methods", node.getId() + ".java");
+        var methodPath = "methods" + "/" + node.getId() + ".java";
         writeNodeToFile(node.getSource(), Path.of(configuration.getOutputDirectory(), methodPath.toString()).toString());
         output.setId(node.getId());
         output.setMethodSourceFile(methodPath.toString());

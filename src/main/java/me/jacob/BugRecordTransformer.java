@@ -128,7 +128,7 @@ public class BugRecordTransformer implements Runnable {
         output.setNumberOfBugs(node.getNumberOfBugs());
         output.setSignature(node.getSignature());
         output.setGraphId(node.getGraphId());
-
+        output.setOldLongName(node.getOldLongName());
         return output;
     }
 
@@ -139,6 +139,7 @@ public class BugRecordTransformer implements Runnable {
         output.setHash(input.getHash());
         output.setParent(input.getParent());
         output.setNumberOfBugs(input.getNumberOfBugs());
+        output.setOldLongName(input.getLongName());
         output.setSource(nameMatcher.getResult());
         output.setClassSourceFile(classSourceName);
         output.setSignature(input.getParent() + "." + nameMatcher.getSignature());
